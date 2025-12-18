@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Absentra - Leave Management for Slack</title>
+  <meta name="description" content="A lightweight Slack app for leave request management. Request time off, get approvals, track balances, and see who's out - all from within Slack.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --primary: #4A154B;
+      --primary-light: #611f69;
+      --accent: #36C5F0;
+      --green: #2EB67D;
+      --yellow: #ECB22E;
+      --red: #E01E5A;
+      --dark: #1a1a2e;
+      --gray: #616061;
+      --light: #f8f8f8;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      background: #fff;
+    }
+
+    .container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+
+    /* Nav */
+    nav {
+      padding: 20px 0;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: rgba(255,255,255,0.95);
+      backdrop-filter: blur(10px);
+      z-index: 100;
+      border-bottom: 1px solid #eee;
+    }
+    nav .container { display: flex; justify-content: space-between; align-items: center; }
+    .logo { font-weight: 700; font-size: 1.5rem; color: var(--primary); display: flex; align-items: center; gap: 8px; }
+    .logo span { font-size: 1.8rem; }
+    .nav-links { display: flex; gap: 32px; align-items: center; }
+    .nav-links a { text-decoration: none; color: var(--gray); font-weight: 500; transition: color 0.2s; }
+    .nav-links a:hover { color: var(--primary); }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 12px 24px; border-radius: 8px; font-weight: 600;
+      text-decoration: none; transition: all 0.2s; border: none; cursor: pointer; font-size: 1rem;
+    }
+    .btn-primary { background: var(--primary); color: #fff !important; }
+    .btn-primary:hover { background: var(--primary-light); transform: translateY(-2px); }
+    .btn-outline { border: 2px solid var(--primary); color: var(--primary); background: transparent; }
+    .btn-outline:hover { background: var(--primary); color: #fff; }
+    .btn-slack { background: #fff; color: #333; border: 1px solid #ddd; }
+    .btn-slack:hover { border-color: var(--primary); }
+    .btn-slack img { height: 20px; }
+
+    /* Hero */
+    .hero {
+      padding: 160px 0 100px;
+      background: linear-gradient(135deg, #faf5ff 0%, #f0f9ff 100%);
+    }
+    .hero .container { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center; }
+    .hero h1 { font-size: 3.5rem; font-weight: 700; line-height: 1.1; color: var(--dark); margin-bottom: 24px; }
+    .hero h1 span { color: var(--primary); }
+    .hero p { font-size: 1.25rem; color: var(--gray); margin-bottom: 32px; max-width: 500px; }
+    .hero-buttons { display: flex; gap: 16px; flex-wrap: wrap; }
+    .hero-visual {
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 25px 50px -12px rgba(0,0,0,0.15);
+      padding: 24px;
+      border: 1px solid #eee;
+    }
+    .slack-mock {
+      background: var(--primary);
+      border-radius: 12px;
+      padding: 16px;
+      color: #fff;
+    }
+    .slack-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.2); }
+    .slack-header .dot { width: 12px; height: 12px; border-radius: 50%; }
+    .slack-header .dot:nth-child(1) { background: #E01E5A; }
+    .slack-header .dot:nth-child(2) { background: #ECB22E; }
+    .slack-header .dot:nth-child(3) { background: #2EB67D; }
+    .slack-channel { font-weight: 600; margin-left: auto; }
+    .slack-message { background: rgba(255,255,255,0.1); border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+    .slack-message .user { font-weight: 600; margin-bottom: 4px; }
+    .slack-message .text { font-size: 0.9rem; opacity: 0.9; }
+    .slack-message .cmd { color: var(--accent); font-family: monospace; }
+    .slack-bot-response { background: rgba(46,182,125,0.2); border-left: 4px solid var(--green); }
+
+    /* Features */
+    .features { padding: 100px 0; }
+    .section-header { text-align: center; margin-bottom: 60px; }
+    .section-header h2 { font-size: 2.5rem; color: var(--dark); margin-bottom: 16px; }
+    .section-header p { font-size: 1.1rem; color: var(--gray); max-width: 600px; margin: 0 auto; }
+    .features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; }
+    .feature-card {
+      padding: 0;
+      border-radius: 8px;
+      background: #fff;
+      border: 1px solid #e0e0e0;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      transition: all 0.3s;
+      overflow: hidden;
+    }
+    .feature-card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
+    .feature-card-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      background: var(--primary);
+      color: #fff;
+    }
+    .feature-card-header .bot-avatar {
+      width: 36px; height: 36px;
+      background: #fff;
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .feature-card-header .bot-avatar svg { color: var(--primary); }
+    .feature-card-header .bot-name { font-weight: 600; font-size: 0.95rem; }
+    .feature-card-header .bot-tag {
+      font-size: 0.7rem;
+      background: rgba(255,255,255,0.2);
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin-left: auto;
+    }
+    .feature-card-body {
+      padding: 16px;
+    }
+    .feature-card-body h3 {
+      font-size: 1rem;
+      margin-bottom: 8px;
+      color: var(--dark);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .feature-card-body h3 svg { color: var(--primary); flex-shrink: 0; }
+    .feature-card-body p { color: var(--gray); font-size: 0.9rem; line-height: 1.5; }
+    .feature-card-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid #f0f0f0;
+    }
+    .feature-card-actions span {
+      font-size: 0.75rem;
+      padding: 6px 12px;
+      background: #f8f8f8;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      color: var(--gray);
+    }
+
+    /* Commands */
+    .commands { padding: 100px 0; background: var(--light); }
+    .commands-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; max-width: 800px; margin: 0 auto; }
+    .command-item {
+      display: flex; align-items: center; gap: 16px;
+      padding: 16px 20px;
+      background: #fff;
+      border-radius: 10px;
+      border: 1px solid #eee;
+    }
+    .command-item code {
+      font-family: 'SF Mono', Monaco, monospace;
+      background: var(--primary);
+      color: #fff;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      white-space: nowrap;
+    }
+    .command-item span { color: var(--gray); font-size: 0.9rem; }
+
+    /* Admin Features */
+    .admin-features { padding: 100px 0; background: var(--light); }
+    .admin-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; max-width: 900px; margin: 0 auto; }
+    .admin-card {
+      padding: 32px;
+      background: #fff;
+      border-radius: 16px;
+      border: 1px solid #eee;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .admin-icon { font-size: 2rem; display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; background: #f3e8ff; border-radius: 12px; }
+    .admin-card h3 { font-size: 1.2rem; color: var(--dark); margin: 0; }
+    .admin-card p { color: var(--gray); font-size: 0.95rem; margin: 0; }
+
+    /* Why Section */
+    .why { padding: 100px 0; }
+    .why-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; }
+    .why-card {
+      text-align: center;
+      padding: 32px 24px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, #faf5ff 0%, #f0f9ff 100%);
+    }
+    .why-icon { font-size: 2.5rem; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; }
+    .why-card h3 { font-size: 1.1rem; color: var(--dark); margin-bottom: 8px; }
+    .why-card p { color: var(--gray); font-size: 0.9rem; line-height: 1.5; }
+
+    .cta-buttons { display: flex; gap: 16px; justify-content: center; }
+
+    /* Leave Types */
+    .leave-types { padding: 100px 0; }
+    .types-grid { display: flex; justify-content: center; gap: 24px; flex-wrap: wrap; }
+    .type-badge {
+      display: flex; align-items: center; gap: 12px;
+      padding: 16px 24px;
+      background: #fff;
+      border-radius: 50px;
+      border: 1px solid #eee;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    }
+    .type-badge .emoji { font-size: 1.5rem; }
+    .type-badge .info { text-align: left; }
+    .type-badge .name { font-weight: 600; color: var(--dark); }
+    .type-badge .days { font-size: 0.8rem; color: var(--gray); }
+
+    /* CTA */
+    .cta {
+      padding: 100px 0;
+      background: linear-gradient(135deg, var(--primary) 0%, #611f69 100%);
+      color: #fff;
+      text-align: center;
+    }
+    .cta h2 { font-size: 2.5rem; margin-bottom: 16px; }
+    .cta p { font-size: 1.1rem; opacity: 0.9; margin-bottom: 32px; max-width: 500px; margin-left: auto; margin-right: auto; }
+    .cta .btn-primary { background: #fff; color: var(--primary); }
+    .cta .btn-primary:hover { background: #f0f0f0; }
+
+    /* Footer */
+    footer { padding: 60px 0; background: var(--dark); color: #fff; }
+    footer .container { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 24px; }
+    footer .logo { color: #fff; }
+    footer p { opacity: 0.7; font-size: 0.9rem; }
+    .footer-links { align-items: center; display: flex; gap: 24px; }
+    .footer-links a { color: #fff; opacity: 0.7; text-decoration: none; transition: opacity 0.2s; }
+    .footer-links a:hover { opacity: 1; }
+    .support-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 10px 16px;
+      background: #ff5e5b;
+      color: #fff;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 500;
+      transition: transform 0.2s;
+    }
+    .support-badge:hover { transform: scale(1.05); }
+
+    /* Responsive */
+    @media (max-width: 968px) {
+      .hero .container { grid-template-columns: 1fr; text-align: center; }
+      .hero p { margin-left: auto; margin-right: auto; }
+      .hero-buttons { justify-content: center; }
+      .hero-visual { max-width: 500px; margin: 0 auto; }
+      .features-grid { grid-template-columns: repeat(2, 1fr); }
+      .why-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 768px) {
+      .hero h1 { font-size: 2.5rem; }
+      .nav-links { display: none; }
+      .features-grid { grid-template-columns: 1fr; }
+      .commands-grid { grid-template-columns: 1fr; }
+      .admin-grid { grid-template-columns: 1fr; }
+      .why-grid { grid-template-columns: 1fr; }
+      .cta-buttons { flex-direction: column; align-items: center; }
+      footer .container { flex-direction: column; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+  <nav>
+    <div class="container">
+      <div class="logo"><span>🏝️</span> Absentra</div>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#commands">Commands</a>
+        <a href="#why">Why Absentra</a>
+        <a href="https://github.com/Commit25uccess/absentra" class="btn btn-primary">Get Started</a>
+      </div>
+    </div>
+  </nav>
+
+  <section class="hero">
+    <div class="container">
+      <div class="hero-content">
+        <h1>Leave management,<br><span>right in Slack</span></h1>
+        <p>Request time off, track balances, and see who's out—without leaving Slack. Simple for employees, powerful for managers.</p>
+        <div class="hero-buttons">
+          <a href="https://github.com/Commit25uccess/absentra" class="btn btn-primary">Get Started</a>
+          <a href="https://github.com/Commit25uccess/absentra#readme" class="btn btn-outline">Documentation</a>
+        </div>
+      </div>
+      <div class="hero-visual">
+        <div class="slack-mock">
+          <div class="slack-header">
+            <span class="dot"></span>
+            <span class="dot"></span>
+            <span class="dot"></span>
+            <span class="slack-channel"># general</span>
+          </div>
+          <div class="slack-message">
+            <div class="user">👤 Sarah</div>
+            <div class="text"><span class="cmd">/pto request</span></div>
+          </div>
+          <div class="slack-message slack-bot-response">
+            <div class="user">🏝️ Absentra</div>
+            <div class="text">✅ Your PTO request for Dec 23-27 has been submitted and is pending approval from @Mike</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="features" id="features">
+    <div class="container">
+      <div class="section-header">
+        <h2>Everything you need</h2>
+        <p>A complete leave management solution that lives where your team already works</p>
+      </div>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-card-header">
+            <div class="bot-avatar"><i data-lucide="palmtree" style="width:20px;height:20px;color:var(--primary)"></i></div>
+            <span class="bot-name">Absentra</span>
+            <span class="bot-tag">APP</span>
+          </div>
+          <div class="feature-card-body">
+            <h3><i data-lucide="file-text" style="width:18px;height:18px"></i> Intuitive Request Flow</h3>
+            <p>Beautiful modal interface for submitting requests. Support for full days, half-days (AM/PM), and multi-day ranges with optional notes.</p>
+            <div class="feature-card-actions">
+              <span>📅 Select dates</span>
+              <span>💬 Add note</span>
+            </div>
+          </div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card-header">
+            <div class="bot-avatar"><i data-lucide="palmtree" style="width:20px;height:20px;color:var(--primary)"></i></div>
+            <span class="bot-name">Absentra</span>
+            <span class="bot-tag">APP</span>
+          </div>
+          <div class="feature-card-body">
+            <h3><i data-lucide="bar-chart-3" style="width:18px;height:18px"></i> Balance Tracking</h3>
+            <p>Visual progress bars show remaining days by leave type. Employees always know exactly where they stand.</p>
+            <div class="feature-card-actions">
+              <span>🏖️ PTO: 15/20</span>
+              <span>🤒 Sick: 8/10</span>
+            </div>
+          </div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card-header">
+            <div class="bot-avatar"><i data-lucide="palmtree" style="width:20px;height:20px;color:var(--primary)"></i></div>
+            <span class="bot-name">Absentra</span>
+            <span class="bot-tag">APP</span>
+          </div>
+          <div class="feature-card-body">
+            <h3><i data-lucide="check-circle" style="width:18px;height:18px"></i> One-Click Approvals</h3>
+            <p>Managers get DM notifications with approve/reject buttons. Add notes, handle requests in seconds.</p>
+            <div class="feature-card-actions">
+              <span style="background:#dcfce7;border-color:#86efac;color:#166534;">✓ Approve</span>
+              <span style="background:#fee2e2;border-color:#fca5a5;color:#991b1b;">✗ Reject</span>
+            </div>
+          </div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card-header">
+            <div class="bot-avatar"><i data-lucide="palmtree" style="width:20px;height:20px;color:var(--primary)"></i></div>
+            <span class="bot-name">Absentra</span>
+            <span class="bot-tag">APP</span>
+          </div>
+          <div class="feature-card-body">
+            <h3><i data-lucide="users" style="width:18px;height:18px"></i> Who's Out View</h3>
+            <p>Instantly see who's out today or this week. Plan meetings and coverage without checking calendars.</p>
+            <div class="feature-card-actions">
+              <span>👀 Today</span>
+              <span>📆 This week</span>
+            </div>
+          </div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card-header">
+            <div class="bot-avatar"><i data-lucide="palmtree" style="width:20px;height:20px;color:var(--primary)"></i></div>
+            <span class="bot-name">Absentra</span>
+            <span class="bot-tag">APP</span>
+          </div>
+          <div class="feature-card-body">
+            <h3><i data-lucide="layout-dashboard" style="width:18px;height:18px"></i> Home Tab Dashboard</h3>
+            <p>Rich App Home interface showing your balances, pending requests, and quick actions—no commands needed.</p>
+            <div class="feature-card-actions">
+              <span>🏠 Home</span>
+              <span>⚡ Quick actions</span>
+            </div>
+          </div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-card-header">
+            <div class="bot-avatar"><i data-lucide="palmtree" style="width:20px;height:20px;color:var(--primary)"></i></div>
+            <span class="bot-name">Absentra</span>
+            <span class="bot-tag">APP</span>
+          </div>
+          <div class="feature-card-body">
+            <h3><i data-lucide="terminal" style="width:18px;height:18px"></i> Slash Commands</h3>
+            <p>Power users can do everything via <code>/pto</code> commands. Fast and keyboard-friendly.</p>
+            <div class="feature-card-actions">
+              <span style="font-family:monospace;">/pto request</span>
+              <span style="font-family:monospace;">/pto balance</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Admin Features -->
+  <section class="admin-features">
+    <div class="container">
+      <div class="section-header">
+        <h2>Powerful admin controls</h2>
+        <p>Configure everything to match how your team works</p>
+      </div>
+      <div class="admin-grid">
+        <div class="admin-card">
+          <div class="admin-icon"><i data-lucide="palette" style="width:28px;height:28px;color:var(--primary)"></i></div>
+          <h3>Custom Leave Types</h3>
+          <p>Create leave types with custom names, emoji, colors, default allowances, and approval requirements. Unlimited flexibility.</p>
+        </div>
+        <div class="admin-card">
+          <div class="admin-icon"><i data-lucide="users-round" style="width:28px;height:28px;color:var(--primary)"></i></div>
+          <h3>Team Management</h3>
+          <p>Create teams, assign managers, and set up approval chains. Support for multiple teams and cross-team visibility.</p>
+        </div>
+        <div class="admin-card">
+          <div class="admin-icon"><i data-lucide="scale" style="width:28px;height:28px;color:var(--primary)"></i></div>
+          <h3>Balance Management</h3>
+          <p>Set default allowances per leave type. Adjust individual balances for special cases, carryover, or corrections.</p>
+        </div>
+        <div class="admin-card">
+          <div class="admin-icon"><i data-lucide="bell" style="width:28px;height:28px;color:var(--primary)"></i></div>
+          <h3>Notifications</h3>
+          <p>Configure notification channels for daily digests. Timezone-aware scheduling posts "Who's out" each morning.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="commands" id="commands">
+    <div class="container">
+      <div class="section-header">
+        <h2>Simple commands</h2>
+        <p>Everything accessible via <code style="background:var(--primary);color:#fff;padding:4px 10px;border-radius:6px;">/pto</code></p>
+      </div>
+      <div class="commands-grid">
+        <div class="command-item">
+          <code>/pto request</code>
+          <span>Open the leave request form</span>
+        </div>
+        <div class="command-item">
+          <code>/pto balance</code>
+          <span>Check your leave balances</span>
+        </div>
+        <div class="command-item">
+          <code>/pto my</code>
+          <span>View your leave requests</span>
+        </div>
+        <div class="command-item">
+          <code>/pto who</code>
+          <span>See who's out today</span>
+        </div>
+        <div class="command-item">
+          <code>/pto pending</code>
+          <span>View requests to approve</span>
+        </div>
+        <div class="command-item">
+          <code>/pto admin</code>
+          <span>Admin settings panel</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!--
+  <section class="leave-types">
+    <div class="container">
+      <div class="section-header">
+        <h2>Flexible leave types</h2>
+        <p>Pre-configured defaults that you can customize for your team</p>
+      </div>
+      <div class="types-grid">
+        <div class="type-badge">
+          <span class="emoji">🏖️</span>
+          <div class="info">
+            <div class="name">PTO</div>
+            <div class="days">20 days</div>
+          </div>
+        </div>
+        <div class="type-badge">
+          <span class="emoji">🤒</span>
+          <div class="info">
+            <div class="name">Sick Leave</div>
+            <div class="days">10 days</div>
+          </div>
+        </div>
+        <div class="type-badge">
+          <span class="emoji">🏠</span>
+          <div class="info">
+            <div class="name">Work From Home</div>
+            <div class="days">Unlimited</div>
+          </div>
+        </div>
+        <div class="type-badge">
+          <span class="emoji">👤</span>
+          <div class="info">
+            <div class="name">Personal</div>
+            <div class="days">5 days</div>
+          </div>
+        </div>
+        <div class="type-badge">
+          <span class="emoji">📋</span>
+          <div class="info">
+            <div class="name">Unpaid Leave</div>
+            <div class="days">Unlimited</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+  -->
+
+  <section class="why" id="why">
+    <div class="container">
+      <div class="section-header">
+        <h2>Why Absentra?</h2>
+        <p>Built for teams who want simplicity without compromise</p>
+      </div>
+      <div class="why-grid">
+        <div class="why-card">
+          <div class="why-icon"><i data-lucide="unlock" style="width:32px;height:32px;color:var(--primary)"></i></div>
+          <h3>Free & Open Source</h3>
+          <p>MIT licensed. No per-seat pricing, no feature gates, no surprises. Use it, modify it, make it yours.</p>
+        </div>
+        <div class="why-card">
+          <div class="why-icon"><i data-lucide="server" style="width:32px;height:32px;color:var(--primary)"></i></div>
+          <h3>Self-Hosted</h3>
+          <p>Your data stays on your infrastructure. Full control, full privacy, full compliance with your policies.</p>
+        </div>
+        <div class="why-card">
+          <div class="why-icon"><i data-lucide="zap" style="width:32px;height:32px;color:var(--primary)"></i></div>
+          <h3>Lightweight</h3>
+          <p>Single Docker container, SQLite database. Runs on a $5/month VPS. No complex infrastructure needed.</p>
+        </div>
+        <div class="why-card">
+          <div class="why-icon"><i data-lucide="sliders-horizontal" style="width:32px;height:32px;color:var(--primary)"></i></div>
+          <h3>Fully Customizable</h3>
+          <p>Configure leave types, approval flows, notifications, and more. Adapt it to how your team actually works.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta">
+    <div class="container">
+      <h2>Ready to simplify time off?</h2>
+      <p>Deploy in minutes. Free forever. Own your data.</p>
+      <div class="cta-buttons">
+        <a href="https://github.com/Commit25uccess/absentra" class="btn btn-primary">View on GitHub</a>
+        <a href="https://github.com/Commit25uccess/absentra#quick-start" class="btn btn-outline" style="border-color:#fff;color:#fff;">Quick Start Guide</a>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="container">
+      <div class="logo"><span>🏝️</span> Absentra</div>
+      <p>Made with ❤️ for teams who value work-life balance</p>
+      <div class="footer-links">
+        <a href="https://github.com/Commit25uccess/absentra" target="_blank">GitHub</a>
+        <a href="https://github.com/Commit25uccess/absentra#contributing" target="_blank">Contributing</a>
+        <a href="https://ko-fi.com/commit25uccess" target="_blank" class="support-badge">☕ Support</a>
+      </div>
+    </div>
+  </footer>
+  <script>lucide.createIcons();</script>
+</body>
+</html>
