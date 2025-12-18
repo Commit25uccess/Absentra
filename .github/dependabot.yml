@@ -1,0 +1,22 @@
+# .github/dependabot.yml
+version: 2
+updates:
+  # Keep npm dependencies up to date
+  - package-ecosystem: "npm"
+    directory: "/" # Root where package.json and package-lock.json live
+    schedule:
+      interval: "weekly" # Options: daily, weekly, monthly
+    commit-message:
+      prefix: "deps"
+    open-pull-requests-limit: 10
+    allow:
+      - dependency-type: "direct" # Only update direct dependencies
+    ignore:
+      - dependency-name: "typescript"
+        versions: ["<5.0.0"] # Example: skip older TS versions
+
+  # Keep GitHub Actions workflows up to date
+  - package-ecosystem: "github-actions"
+    directory: "/" # Workflow files are in .github/workflows
+    schedule:
+      interval: "weekly"

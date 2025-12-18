@@ -1,0 +1,188 @@
+// Prisma schema for PTO Slack App
+// Using SQLite for simplicity
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  // url property removed - Prisma 7.x requires connection URLs in prisma.config.ts
+  // For local development, use: DATABASE_URL="file:./dev.db" in .env
+}
+
+// Workspace settings
+model Settings {
+  id                    String   @id @default("default")
+  workspaceName         String?
+  slackTeamId           String?  @unique
+  defaultAllowance      Int      @default(20) // Default PTO days per year
+  allowNegativeBalance  Boolean  @default(false)
+  requireApproval       Boolean  @default(true)
+  notificationChannelId String?  // Channel for daily digests and notifications
+  digestEnabled         Boolean  @default(true)  // Whether to send daily digest
+  digestHour            Int      @default(9)     // Hour to send digest (0-23)
+  digestMinute          Int      @default(0)     // Minute to send digest (0-59)
+  digestWeekdaysOnly    Boolean  @default(true)  // Only send on weekdays
+  timezone              String   @default("UTC")
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+// Users from Slack
+model User {
+  id              String         @id @default(cuid())
+  slackId         String         @unique
+  email           String?
+  displayName     String
+  realName        String?
+  avatarUrl       String?
+  isAdmin         Boolean        @default(false)
+  isActive        Boolean        @default(true)
+  teamId          String?
+  team            Team?          @relation(fields: [teamId], references: [id])
+  managedTeams    Team[]         @relation("TeamManagers")
+  leaveRequests   LeaveRequest[] @relation("Requester")
+  approvedLeaves  LeaveRequest[] @relation("Approver")
+  leaveBalances   LeaveBalance[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([slackId])
+}
+
+// Teams/Departments
+model Team {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  managers    User[]   @relation("TeamManagers")
+  members     User[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Types of leave (PTO, Sick, WFH, etc.)
+model LeaveType {
+  id               String         @id @default(cuid())
+  name             String         @unique
+  emoji            String         @default("📅")
+  color            String         @default("#4A90A4") // For UI display
+  defaultAllowance Int?           // null means unlimited
+  requiresApproval Boolean        @default(true)
+  affectsBalance   Boolean        @default(true) // WFH might not affect PTO balance
+  isActive         Boolean        @default(true)
+  order            Int            @default(0) // Display order
+  // Reminder settings for this leave type
+  reminderEnabled  Boolean        @default(true)
+  reminderHour     Int            @default(9)     // Hour to send reminders (0-23)
+  reminderMinute   Int            @default(0)     // Minute to send reminders (0-59)
+  reminderWeekdaysOnly Boolean     @default(true)  // Only send reminders on weekdays
+  preLeaveReminderEnabled Boolean @default(true)   // Send reminders before leave starts
+  midLeaveReminderEnabled Boolean @default(true)   // Send check-ins during multi-day leave
+  customReminderMessage String?       // Custom message template for this leave type
+  leaveRequests    LeaveRequest[]
+  leaveBalances    LeaveBalance[]
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+}
+
+// User balances per leave type per year
+model LeaveBalance {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  leaveTypeId String
+  leaveType   LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+  year        Int
+  allowance   Decimal  // Total allowed days
+  used        Decimal  @default(0) // Days used
+  adjustment  Decimal  @default(0) // Manual adjustments (bonus days, carryover)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, leaveTypeId, year])
+  @@index([userId, year])
+}
+
+// Leave requests
+model LeaveRequest {
+  id           String       @id @default(cuid())
+  requesterId  String
+  requester    User         @relation("Requester", fields: [requesterId], references: [id], onDelete: Cascade)
+  leaveTypeId  String
+  leaveType    LeaveType    @relation(fields: [leaveTypeId], references: [id])
+  startDate    DateTime
+  endDate      DateTime
+  isHalfDay    Boolean      @default(false)
+  halfDayPeriod String?     @default("morning") // "morning" or "afternoon" if isHalfDay
+  totalDays    Decimal      // Calculated days (excluding weekends/holidays)
+  reason       String?      // Private reason visible only to managers/admins
+  teamNotes    String?      // Optional notes visible to everyone
+  status       String        @default("PENDING") // PENDING, APPROVED, REJECTED, CANCELLED
+  approverId   String?
+  approver     User?        @relation("Approver", fields: [approverId], references: [id])
+  approverNote String?
+  approvedAt   DateTime?
+  slackMessageTs String?    // For updating the approval message (legacy, use messages relation)
+  slackChannelId String?    // Channel where approval message was sent (legacy, use messages relation)
+  messages     LeaveRequestMessage[]  // All message references for this request
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([requesterId, status])
+  @@index([startDate, endDate])
+  @@index([status])
+  @@index([status, startDate, endDate])
+}
+
+// Public holidays
+model PublicHoliday {
+  id          String   @id @default(cuid())
+  name        String
+  date        DateTime
+  isRecurring Boolean  @default(false) // Repeats every year
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([name, date])
+  @@index([date])
+}
+
+// Slack message references for leave requests (approval messages, notifications)
+model LeaveRequestMessage {
+  id             String       @id @default(cuid())
+  leaveRequestId String
+  leaveRequest   LeaveRequest @relation(fields: [leaveRequestId], references: [id], onDelete: Cascade)
+  messageType    String       // "approval" | "requester_notification" | "channel_notification"
+  slackChannelId String
+  slackMessageTs String
+  recipientId    String?      // Slack user ID of the message recipient (for DMs)
+  createdAt      DateTime     @default(now())
+
+  @@unique([leaveRequestId, slackChannelId, slackMessageTs])
+  @@index([leaveRequestId])
+}
+
+// User-specific preferences per leave type (e.g., auto-approve settings)
+model UserLeaveTypePreference {
+  id           String   @id @default(cuid())
+  userId       String   // Slack user ID
+  leaveTypeId  String
+  autoApprove  Boolean  @default(false) // Auto-approve requests for this user+leave type
+  maxDays      Int?     // Maximum days for auto-approval (null = unlimited)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([userId, leaveTypeId])
+  @@map("user_leave_type_preference")
+}
+
+// Leave policy document
+model LeavePolicy {
+  id        String   @id @default("default")
+  content   String   // Markdown content of the leave policy
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+}
